@@ -1,0 +1,9 @@
+{
+ "engine": "tesseract",
+ "extractor": "fine-tuned DistilBERT + rules",
+ "mean_CER": 0.00710345797579103,
+ "micro_F1_partial": {
+  "clean text": 0.6988636363636364,
+  "scanned + OCR": 0.6853932584269664
+ }
+}

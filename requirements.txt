@@ -1,0 +1,25 @@
+# --- core ---
+numpy
+pandas
+matplotlib
+# --- documents / OCR (pretrained OCR models, no training) ---
+pdfplumber
+pypdfium2
+pillow
+pytesseract            # fallback OCR; also needs the Tesseract binary (apt install tesseract-ocr)
+# paddlepaddle & paddleocr are OPTIONAL (preferred OCR engine):  pip install paddlepaddle paddleocr
+# --- NLP (pretrained transformers) ---
+torch
+transformers>=4.41
+datasets
+accelerate>=0.26
+peft                   # only for `--lora`
+sentence-transformers  # job-description matching (pretrained MiniLM embeddings)
+# --- UI ---
+streamlit
+# --- optional LLM baseline ---
+# openai
+# --- dev ---
+pytest
+reportlab
+tokenizers

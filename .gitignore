@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+# fine-tuned weights are large: publish to the Hugging Face Hub or keep local
+models/*/
+!models/.gitkeep
