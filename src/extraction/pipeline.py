@@ -20,7 +20,7 @@ class ResumeAssistant:
                 from src.extraction.ner import TransformerNER
                 self.ner = TransformerNER(model_path)
                 self.model_path = model_path
-            except Exception as e:  # transformers missing / bad checkpoint
+            except Exception as e: 
                 self.ner_error = str(e)
         else:
             self.ner_error = f"Fine-tuned model not found at {model_path} (run training/finetune.py, or set HF_MODEL_ID in src/config.py / RESUMATE_MODEL)"
@@ -42,7 +42,7 @@ class ResumeAssistant:
         else:
             entities = heuristics.predict_strings(text)
             confidence, method = {}, "heuristic"
-        if not entities["Name"]:  # fall back to heuristic first-line name
+        if not entities["Name"]: 
             entities["Name"] = heuristics.predict_strings(text)["Name"]
 
         ranges = rules.extract_date_ranges(text)
