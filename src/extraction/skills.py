@@ -38,7 +38,6 @@ def extract_skills(text: str) -> dict:
         raw = m.group(0)
         key = raw.lower()
         if key in _AMBIGUOUS:
-            # keep ambiguous tokens only if capitalised like a proper tool name or in a list context
             ctx = text[max(0, m.start() - 20): m.end() + 20]
             if not (raw[0].isupper() and raw.isupper() or "," in ctx or "|" in ctx or ":" in ctx):
                 continue
