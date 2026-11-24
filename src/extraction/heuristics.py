@@ -24,7 +24,7 @@ LOC_RE = re.compile(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?,\s(?:[A-Z]{2}\b|[A-Z][a-z]
 def predict_strings(text: str) -> Dict[str, List[str]]:
     out = {t: [] for t in ENTITY_TYPES}
     lines = [l for l in text.splitlines() if l.strip()]
-    for line in lines[:5]:  # name = first short, letters-only, non-heading line
+    for line in lines[:5]:  
         words = line.strip().split()
         if 2 <= len(words) <= 4 and re.fullmatch(r"[A-Za-z.' -]+", line.strip()) \
                 and not DESIG_RE.search(line) and not line.strip().isupper():
