@@ -11,7 +11,7 @@ from typing import Dict, Iterable, List
 def norm(s: str) -> str:
     s = s.lower()
     s = re.sub(r"[^\w+#.\s]", " ", s)
-    s = re.sub(r"(?<!\w)\.|\.(?!\w)", " ", s)      # drop dots at word edges, keep c++ / node.js
+    s = re.sub(r"(?<!\w)\.|\.(?!\w)", " ", s)     
     return re.sub(r"\s+", " ", s).strip()
 
 
