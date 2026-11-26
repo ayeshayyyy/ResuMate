@@ -20,7 +20,7 @@ years of experience, skills**), and optionally matches the resume to a job descr
 | Show methodology and results, not just UI | `evaluation/` - held-out test sets, 3 methods compared (an optional LLM baseline is implemented but was not run), exact/partial metrics, bootstrap significance, error analysis, OCR robustness study |
 | Base vs fine-tuned on held-out test set | `evaluation/run_eval.py` (`base` = off-the-shelf NER, `finetuned` = ours); the test split is never used for training or model selection |
 | Simple Streamlit interface | `app.py` |
-| Extract names, dates, amounts, tables, important fields | Names / organisations / titles / locations / schools / degrees via NER; contact details, date ranges and years of experience via rules; skills via gazetteer. Resumes contain no monetary amounts. **Table extraction is not implemented** |
+| Extract names, dates, tables, important fields | NER, rules, skills gazetteer, digital-PDF table extraction, and timeline checks. Resumes contain no monetary amounts. |
 
 ## Pipeline
 
@@ -28,13 +28,24 @@ years of experience, skills**), and optionally matches the resume to a job descr
 PDF / scan / photo
    |  pdfplumber text layer  --(page has < 80 chars?)-->  rasterise (pypdfium2) -> OCR (Tesseract | PaddleOCR)
    v
-clean text (unicode, bullets, OCR e-mail repair)
+layout-aware text, tables, and word coordinates (visual provenance)
+  | clean text (unicode, bullets, OCR e-mail repair)
    |-- fine-tuned DistilBERT NER  -> Name, Company, Designation, Location, College, Degree  (+ confidence)
    |-- regex rules                -> e-mail, phone, links, date ranges, years of experience, sections
    |-- skill gazetteer            -> skills by category
    v
-structured JSON  ->  Streamlit UI  (+ job-description match with MiniLM embeddings)
+structured JSON  ->  Streamlit UI (page highlights, timeline diagnostics)
+  |-- requirement-level evidence and candidate ranking
+  |-- blind-screen redaction and flattened image-only PDF export
 ```
+
+## Added capabilities
+
+* **Visual provenance:** PDF text/OCR word boxes are associated with extracted fields and highlighted over rendered pages. This is best-effort span matching; unmatched fields are not highlighted.
+* **Layout and tables:** positioned PDF words are used for a simple gutter-based two-column reading order. `pdfplumber` extracts machine-readable PDF tables. Scanned tables and complex multi-column layouts remain dependent on OCR reading order and are not reliably reconstructed.
+* **Timeline integrity:** reports overlaps, gaps between dated entries, future or implausible date ranges, and compares explicit experience-year claims with merged dated history. A gap does not imply unemployment; these are review signals, not factual determinations.
+* **Evidence-based matching:** every job-description sentence gets a supported/partial/not-found verdict, matched terms, and a supporting resume sentence where available. Multi-candidate ranking prioritizes requirement evidence coverage; semantic similarity is a secondary tie-break signal.
+* **Blind screening:** detected names, locations, emails, phones, profile links, portfolio URLs, labeled birth dates, and street addresses are redacted in text. PDF/image exports are rendered and re-emitted as raster pages with opaque masks (no text layer). The UI reports whether the requirement-evidence score is unchanged after redaction. Always review the output because PII detection can miss details.
 
 ## Quick start
 
@@ -45,7 +56,7 @@ pip install -r requirements.txt
 #   Linux:   sudo apt install tesseract-ocr
 # Optional OCR engine: pip install paddlepaddle paddleocr
 
-python -m pytest -q                      # 11 unit tests (rules, metrics, label alignment, OCR path)
+python -m pytest -q                      # tests include rules, metrics, layout, provenance, redaction, OCR path
 python -m training.prepare_data          # seeded 80/10/10 split -> data/ner/splits (test = 221 resumes)
 
 # GPU (free Colab/Kaggle T4) - see training/colab_finetune.ipynb
@@ -171,8 +182,7 @@ layouts, so real-world robustness is likely lower.
 
 ## Limitations / discussion points
 
-* **No table extraction.** Resumes are processed as text lines; tables and multi-column layouts can scramble
-  reading order in text extraction and OCR.
+* Layout handling uses a heuristic column gutter and pdfplumber's machine-readable table extraction. Scanned tables, nested cells, and complex layouts are not reliably reconstructed.
 * DataTurks annotations are noisy (inconsistent boundaries, mixed offset conventions), so exact match
   understates quality; partial match is reported alongside.
 * Training data is mostly Indian-IT-industry text in list style; the model transfers poorly to prose-style or
@@ -181,26 +191,26 @@ layouts, so real-world robustness is likely lower.
 * OCR was tested on synthetic scans only. PaddleOCR support is implemented but the reported results use Tesseract.
 * Skills use a fixed gazetteer, so unseen skills are missed; short ambiguous tokens (`R`, `Go`) use a context
   filter.
-* Experience duration is computed from date ranges in the experience section; overlapping jobs are merged,
-  undated jobs are ignored.
-* Resumes contain personal data, and NER-based screening can encode bias; the tool should assist a human, not
-  decide.
+* Experience duration is computed from date ranges in the experience section; overlapping jobs are merged, undated jobs are ignored. Timeline flags can be caused by missing dates or legitimate concurrent roles.
+* Blind-screen redaction depends on extraction and OCR quality. It is not a guarantee of anonymisation; users must inspect the flattened output before sharing.
+* Resumes contain personal data, and NER-based screening can encode bias. The tool should assist a human, not decide.
 
 ## Possible future work
 
 * Cased model (`distilbert-base-cased`) or a larger model, and checking the span-merging strategy using the
   validation split.
 * Adding a few prose-style or multi-format resumes to the training data and re-testing on a fresh unseen set.
-* Layout-aware extraction (tables, columns) with a document-layout model.
+* Layout-aware extraction for scanned tables and complex columns with a document-layout model.
 * The optional LLM baseline for comparison.
 
 ## Project layout
 
 ```
 app.py                       Streamlit UI
-src/ingestion/               loader (text layer vs OCR), ocr engines (Tesseract / PaddleOCR)
+src/ingestion/               loader, layout, tables, provenance, OCR engines
 src/extraction/              ner.py (HF NER wrapper), rules.py, skills.py, heuristics.py, llm.py, pipeline.py
-src/matching/matcher.py      MiniLM similarity + skill gap
+src/matching/matcher.py      requirement evidence, candidate ranking, MiniLM similarity
+src/privacy.py               text/PDF PII redaction and score-invariance check
 training/                    prepare_data.py, alignment.py, finetune.py, colab_finetune.ipynb
 evaluation/                  metrics.py, run_eval.py, ocr_robustness.py
 data/                        ner/ (DataTurks + splits), synthetic_test/, samples/

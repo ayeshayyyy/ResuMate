@@ -19,6 +19,9 @@ DESIG_RE = re.compile(rf"\b(?:(?:Senior|Junior|Lead|Principal|Staff|Associate|As
                       rf"Full ?Stack|Front ?end|Back ?end|Web|Mobile|DevOps|QA|Project|Product|Program|Systems?|"
                       rf"Application|Java|Python|Cloud|Network|Business|Technical)\s+){{0,3}}{ROLE_WORDS}\b", re.I)
 LOC_RE = re.compile(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)?,\s(?:[A-Z]{2}\b|[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)")
+NAME_HEADINGS = {"summary", "professional summary", "profile", "objective", "career objective",
+                 "resume", "curriculum vitae", "contact", "contact information", "experience",
+                 "work experience", "work history", "education", "skills", "certifications"}
 
 
 def predict_strings(text: str) -> Dict[str, List[str]]:
@@ -27,7 +30,7 @@ def predict_strings(text: str) -> Dict[str, List[str]]:
     for line in lines[:5]:  
         words = line.strip().split()
         if 2 <= len(words) <= 4 and re.fullmatch(r"[A-Za-z.' -]+", line.strip()) \
-                and not DESIG_RE.search(line) and not line.strip().isupper():
+            and not DESIG_RE.search(line) and line.strip().lower() not in NAME_HEADINGS:
             out["Name"] = [line.strip()]
             break
     pats = {"Degree": DEGREE_RE, "College": COLLEGE_RE, "Company": COMPANY_RE,

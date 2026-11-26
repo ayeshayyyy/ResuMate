@@ -26,6 +26,9 @@ DATE_RANGE_RE = re.compile(
     rf"(?<![\d/])" + _tok("1") + r"\s*(?:-|\u2013|\u2014|to|until|till)\s*(?:" + _tok("2") + r"|" + _PRESENT + r")(?![\d])",
     re.I,
 )
+CLAIMED_EXPERIENCE_RE = re.compile(
+    r"\b(?P<years>\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\s+(?:(?:of|in)\s+)?"
+    r"(?:[A-Za-z][A-Za-z0-9+#./-]*\s+){0,4}(?:experience|exp)\b", re.I)
 
 HEADERS = {
     "experience": ["experience", "work experience", "employment", "work history", "professional experience"],
@@ -128,3 +131,81 @@ def total_experience_years(text, today=None):
             cur_s, cur_e = r["start"], r["end"]
     total += cur_e - cur_s + 1
     return round(total / 12, 1)
+
+
+def _range_months(match, today):
+    groups = match.groupdict()
+    start_year = groups["ya1"] or groups["yb1"] or groups["yc1"]
+    start_month = groups["mon1"] or (list(MONTHS)[int(groups["mm1"]) - 1]
+                                      if groups["mm1"] and 1 <= int(groups["mm1"]) <= 12 else None)
+    start = _to_month_index(start_month, start_year)
+    current = bool(groups["pres"])
+    if current:
+        end = today.year * 12 + today.month - 1
+    else:
+        end_year = groups["ya2"] or groups["yb2"] or groups["yc2"]
+        end_month = groups["mon2"] or (list(MONTHS)[int(groups["mm2"]) - 1]
+                                        if groups["mm2"] and 1 <= int(groups["mm2"]) <= 12 else None)
+        end = _to_month_index(end_month, end_year)
+        if not (groups["mon2"] or groups["mm2"]):
+            end += 11
+    return start, end, current
+
+
+def _month_label(index):
+    year, month = divmod(index, 12)
+    return f"{year:04d}-{month + 1:02d}"
+
+
+def analyze_timeline(text, today=None):
+    """Report dated-role overlaps, gaps, impossible dates, and experience-claim drift."""
+    today = today or date.today()
+    sections = split_sections(text)
+    scope = sections.get("experience") or "\n".join(
+        value for key, value in sections.items() if key not in ("education", "certifications"))
+    now_idx = today.year * 12 + today.month - 1
+    intervals, impossible = [], []
+    for match in DATE_RANGE_RE.finditer(scope):
+        groups = match.groupdict()
+        invalid_month = any(groups[key] and not 1 <= int(groups[key]) <= 12 for key in ("mm1", "mm2"))
+        if invalid_month:
+            impossible.append({"text": match.group(0), "reason": "numeric month is outside 1-12"})
+            continue
+        start, end, current = _range_months(match, today)
+        reason = None
+        if start > now_idx or (not current and end > now_idx):
+            reason = "date is in the future"
+        elif end < start:
+            reason = "end date precedes start date"
+        elif end - start > 12 * 50 or start < 1900 * 12:
+            reason = "date range is outside the plausible 1900-to-50-year window"
+        if reason:
+            impossible.append({"text": match.group(0), "reason": reason})
+        else:
+            intervals.append({"text": match.group(0).strip(), "start": start, "end": end,
+                              "current": current})
+
+    intervals.sort(key=lambda item: (item["start"], item["end"]))
+    overlaps, gaps = [], []
+    previous = None
+    for interval in intervals:
+        if previous:
+            if interval["start"] <= previous["end"]:
+                overlaps.append({"earlier": previous["text"], "later": interval["text"],
+                                 "overlap_months": previous["end"] - interval["start"] + 1})
+            elif interval["start"] > previous["end"] + 1:
+                gaps.append({"from": _month_label(previous["end"] + 1),
+                             "to": _month_label(interval["start"] - 1),
+                             "months": interval["start"] - previous["end"] - 1,
+                             "between": [previous["text"], interval["text"]]})
+        if previous is None or interval["end"] > previous["end"]:
+            previous = interval
+
+    claims = [float(match.group("years")) for match in CLAIMED_EXPERIENCE_RE.finditer(text)]
+    dated_years = total_experience_years(text, today)
+    claim_deltas = [{"claimed_years": years, "dated_years": dated_years,
+                     "difference_years": round(years - dated_years, 1),
+                     "consistent_within_one_year": abs(years - dated_years) <= 1.0}
+                    for years in claims]
+    return {"dated_history_years": dated_years, "intervals": intervals, "overlaps": overlaps,
+            "gaps": gaps, "impossible_dates": impossible, "claims": claim_deltas}

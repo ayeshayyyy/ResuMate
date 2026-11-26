@@ -7,6 +7,7 @@ from src.config import ENTITY_TYPES, FINETUNED_DIR, resolve_model_path
 from src.extraction import heuristics, rules
 from src.extraction.skills import extract_skills
 from src.ingestion.loader import load_document
+from src.ingestion.visual import locate_page_fields
 
 
 class ResumeAssistant:
@@ -46,10 +47,19 @@ class ResumeAssistant:
             entities["Name"] = heuristics.predict_strings(text)["Name"]
 
         ranges = rules.extract_date_ranges(text)
+        field_values = {label: values for label, values in entities.items()}
+        field_values.update({"Email": rules.extract_emails(text), "Phone": rules.extract_phones(text),
+                             "Link": rules.extract_links(text),
+                             "Skill": [skill for values in extract_skills(text).values() for skill in values],
+                             "Date range": [item["text"] for item in ranges]})
+        page_marks = ([{"page": page.get("page", index + 1),
+                        "marks": locate_page_fields(page.get("word_boxes", []), field_values)}
+                       for index, page in enumerate(doc.pages)] if doc else [])
         return {
             "document": {
                 "pages": doc.pages if doc else [], "used_ocr": bool(doc and doc.used_ocr),
                 "ocr_engine": doc.ocr_engine if doc else None, "n_chars": len(text),
+                "tables": doc.tables if doc else [],
             },
             "contact": {"name": (entities["Name"] or [None])[0],
                         "emails": rules.extract_emails(text), "phones": rules.extract_phones(text),
@@ -61,6 +71,8 @@ class ResumeAssistant:
             "skills": extract_skills(text),
             "date_ranges": [{"text": r["text"], "months": r["months"], "current": r["current"]} for r in ranges],
             "experience_years": rules.total_experience_years(text),
+            "timeline": rules.analyze_timeline(text),
             "sections": list(rules.split_sections(text).keys()),
+            "provenance": page_marks,
             "text": text,
         }

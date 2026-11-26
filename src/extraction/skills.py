@@ -19,6 +19,10 @@ SKILLS = {
     "Tools": ["jira", "tableau", "power bi", "excel", "figma", "kafka", "spark", "hadoop", "airflow", "rabbitmq",
               "selenium", "junit", "postman"],
     "Practices": ["agile", "scrum", "kanban", "rest", "restful apis", "graphql", "microservices", "oop", "tdd"],
+    "Customer Service & Retail": ["cash handling", "customer service", "pos systems", "point of sale",
+                                  "team leadership", "product recommendations", "attention to detail",
+                                  "communication", "time management", "sales", "cash register",
+                                  "upselling", "customer satisfaction", "inventory management"],
 }
 
 _CANON = {s: cat for cat, items in SKILLS.items() for s in items}

@@ -5,7 +5,7 @@ Both return text with reading order preserved (words grouped into lines by posit
 """
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 import numpy as np
@@ -18,6 +18,7 @@ class OCRResult:
     engine: str
     mean_confidence: Optional[float]  # 0-1, None if engine gives no scores
     n_boxes: int
+    word_boxes: List[dict] = field(default_factory=list)
 
 
 def _group_into_lines(items, y_tol=0.6):
@@ -50,7 +51,7 @@ class PaddleEngine:
 
     def run(self, img: Image.Image) -> OCRResult:
         arr = np.array(img.convert("RGB"))
-        items, confs = [], []
+        items, confs, boxes = [], [], []
         if self.v3:
             for page in self.ocr.predict(arr):
                 texts, scores, polys = page["rec_texts"], page["rec_scores"], page["rec_polys"]
@@ -58,14 +59,18 @@ class PaddleEngine:
                     poly = np.asarray(poly)
                     items.append((poly[:, 0].min(), poly[:, 1].mean(), np.ptp(poly[:, 1]), t))
                     confs.append(float(s))
+                    boxes.append({"text": t, "x0": float(poly[:, 0].min()), "top": float(poly[:, 1].min()),
+                                  "x1": float(poly[:, 0].max()), "bottom": float(poly[:, 1].max())})
         else:
             res = self.ocr.ocr(arr, cls=True) or [[]]
             for box, (t, s) in (res[0] or []):
                 poly = np.asarray(box)
                 items.append((poly[:, 0].min(), poly[:, 1].mean(), np.ptp(poly[:, 1]), t))
                 confs.append(float(s))
+                boxes.append({"text": t, "x0": float(poly[:, 0].min()), "top": float(poly[:, 1].min()),
+                          "x1": float(poly[:, 0].max()), "bottom": float(poly[:, 1].max())})
         return OCRResult(_group_into_lines(items), self.name,
-                         float(np.mean(confs)) if confs else None, len(items))
+                     float(np.mean(confs)) if confs else None, len(items), boxes)
 
 
 class TesseractEngine:
@@ -83,18 +88,21 @@ class TesseractEngine:
     def run(self, img: Image.Image) -> OCRResult:
         d = self.pt.image_to_data(img.convert("RGB"), lang=self.lang, config="--psm 4",
                                   output_type=self.pt.Output.DICT)
-        lines, confs, n = {}, [], 0
+        lines, confs, boxes, n = {}, [], [], 0
         for i, word in enumerate(d["text"]):
             if not word.strip():
                 continue
             key = (d["block_num"][i], d["par_num"][i], d["line_num"][i])
             lines.setdefault(key, []).append((d["left"][i], word))
+            boxes.append({"text": word, "x0": float(d["left"][i]), "top": float(d["top"][i]),
+                          "x1": float(d["left"][i] + d["width"][i]),
+                          "bottom": float(d["top"][i] + d["height"][i])})
             c = float(d["conf"][i])
             if c >= 0:
                 confs.append(c / 100)
             n += 1
         text = "\n".join(" ".join(w for _, w in sorted(ws)) for _, ws in sorted(lines.items()))
-        return OCRResult(text, self.name, float(np.mean(confs)) if confs else None, n)
+        return OCRResult(text, self.name, float(np.mean(confs)) if confs else None, n, boxes)
 
 
 def get_engine(prefer: str = "auto"):
